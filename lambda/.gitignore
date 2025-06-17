@@ -1,0 +1,4 @@
+.env
+models--bert-base-uncased
+tesseract
+bert_text_classifier.keras

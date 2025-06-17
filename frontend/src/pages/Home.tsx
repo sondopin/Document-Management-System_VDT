@@ -1,21 +1,9 @@
-// This is a simplified Google Drive clone layout with sidebar and main content
-// Tailwind CSS and React are assumed to be set up in your project
-
 import { useState } from 'react';
-import { File } from '../types/file.type'; // Define types for Folder/File as needed
-import { Folder } from '../types/folder.type'; // Define types for Folder/File as needed
-import { Plus, Trash2, FolderOpen, Users } from 'lucide-react';
-import { getFiles } from '../apis/file.api';
-import { getFolders } from '../apis/folder.api';
-import { useQueryForm } from '../hooks/useQueryForm'; // Assuming this is a custom hook to get user data
+import { Trash2, FolderOpen, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import NewButton from '../components/NewButton';
 import { useFolder } from '../context/folder.context';
-import { set } from 'react-hook-form';
-import { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import {AppContext} from '../context/app.context';
+import { AppContext } from '../context/app.context';
 import { useContext } from 'react';
 import MainContent from '../components/MainContent';
 
@@ -32,7 +20,7 @@ const SidebarItem = ({ label, icon: Icon, onClick, active }: any) => (
 
 const Home = () => {
   const [view, setView] = useState<'my_drive' | 'shared' | 'trash'>('my_drive');
-  const { parentFolder, setParentFolder, breadcrumbs, setBreadcrumbs, option, setOption } = useFolder();
+  const { setParentFolder, setBreadcrumbs, setOption } = useFolder();
   const { isAuthenticated } = useContext(AppContext);
 
   const navigate = useNavigate();

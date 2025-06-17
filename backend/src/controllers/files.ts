@@ -5,7 +5,8 @@ require('dotenv').config();
 import { File } from "../models/file"; // Import your File model
 import { console } from "inspector";
 import { Readable } from 'stream';
-
+import path from "path";
+import { sanitizeFileNamePart } from "../utils/utils";
 
 
 const s3 = new S3Client({
@@ -16,76 +17,81 @@ const s3 = new S3Client({
     }
 });
 
-
 const fileController = {
-    /**
-     * Upload a file and save its metadata to the database
-     * @param {Request} req - The request object containing file data
-     * @param {Response} res - The response object to send data back
-     */
     // Hàm upload file lên S3
-    uploadFile: async (req: Request, res: Response) => {
+    generateUploadUrl: async (req: Request, res: Response) => {
         try {
-            if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-                res.status(400).json({ message: "No files uploaded" });
+            const { fileName, fileType, parent_folder = null } = req.body;
+
+            if (!fileName || !fileType) {
+                res.status(400).json({ message: "fileName and fileType are required" });
                 return;
             }
 
             const user_id = req.user_id;
+            const now = new Date();
 
-            const parent_folder = req.body.parent_folder || null;
+            const formattedTime = now
+                .toISOString()
+                .replace(/:/g, "-")
+                .replace(/\..+/, "")
+                .replace("T", "_");
 
-            const uploadResults = [];
+            const sanitizedFileName = sanitizeFileNamePart(fileName);
+            const key = `${user_id}/${formattedTime}_${sanitizedFileName}`; // Thêm user_id vào key để tránh trùng lặp giữa các user
+            const document_type = (fileName ?? '').split('.').pop()?.toLowerCase() ?? '';
+            const uniqueName = await getUniqueName(fileName, parent_folder);
 
-            for (const file of req.files) {
-                const now = new Date();
-                const formattedTime = now
-                    .toISOString()
-                    .replace(/:/g, "-")
-                    .replace(/\..+/, "")
-                    .replace("T", "_");
+            const newFile = new File({
+                name: uniqueName,
+                size: 0, 
+                document_type: document_type,
+                last_modified: now,
+                key: key,
+                owner_id: user_id,
+                parent_folder: parent_folder,
+            });
 
-                const key = `${formattedTime}_${file.originalname}`;
-                const document_type = (file.originalname ?? '').split('.').pop()?.toLowerCase() ?? '';
+            await newFile.save();
+            const file_id = newFile._id.toString();
 
-                const newFile = new File({
-                    name: file.originalname,
-                    size: file.size,
-                    document_type: document_type,
-                    last_modified: now,
-                    key: key,
-                    owner_id: user_id,
-                    parent_folder: parent_folder
-                });
+            // Tạo Presigned URL thay vì upload trực tiếp 
+            const command = new PutObjectCommand({
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: key,
+                ContentType: fileType, 
+                Metadata: { 
+                    file_id: file_id,
+                },
+            });
 
-                await newFile.save();
-                const file_id = newFile._id.toString();
-
-                const uploadParams = {
-                    Bucket: process.env.S3_BUCKET_NAME,
-                    Key: key,
-                    Body: file.buffer,
-                    ContentType: file.mimetype,
-                    Metadata: {
-                        file_id: file_id,
-                    },
-                };
-
-                await s3.send(new PutObjectCommand(uploadParams));
-
-                uploadResults.push({ message: "Uploaded successfully", file_id });
-            }
+            // Tạo URL có chữ ký, hết hạn sau 5 phút 
+            const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
 
             res.status(200).json({
-                message: "All files uploaded successfully",
-                results: uploadResults,
+                message: "Presigned URL generated successfully",
+                uploadUrl, // Gửi URL này về cho FE
+                file_id,   // Gửi kèm file_id để FE biết đang upload cho file nào
+                key        // Gửi key về để FE có thể dùng cho bước confirm
             });
+
         } catch (err: any) {
-            console.error("S3 Upload Error:", err);
-            res.status(500).json({ message: "Upload failed", error: err.message });
-            return;
+            console.error("Generate URL Error:", err);
+            res.status(500).json({ message: "Failed to generate upload URL", error: err.message });
         }
     },
+    confirmUpload: async (req: Request, res: Response) => {
+        try {
+            const { file_id, fileSize } = req.body;
+            await File.findByIdAndUpdate(file_id, {
+                size: fileSize,
+            });
+            res.status(200).json({ message: "File upload confirmed" });
+        } catch (err: any) {
+            res.status(500).json({ message: "Failed to confirm upload", error: err.message });
+        }
+    },
+
     getFiles: async (req: Request, res: Response) => {
         try {
             const { parent_folder, option, searchQuery } = req.body;
@@ -93,7 +99,7 @@ const fileController = {
 
             let condition: any = {};
 
-            // --- Điều kiện cơ bản theo option ---
+            //  Điều kiện cơ bản theo option
             switch (option) {
                 case 'owner':
                     condition.owner_id = user_id;
@@ -104,6 +110,7 @@ const fileController = {
                 case 'shared':
                     condition.shared_with = { $in: [user_id] };
                     condition.is_deleted = false;
+                    condition.parent_folder = parent_folder ?? null;
                     break;
 
                 case 'trash':
@@ -116,7 +123,7 @@ const fileController = {
                     return;
             }
 
-            // --- Áp dụng các bộ lọc nâng cao ---
+            //  Áp dụng các bộ lọc nâng cao 
             if (searchQuery) {
                 const {
                     search_content,
@@ -128,12 +135,12 @@ const fileController = {
                     date_before
                 } = searchQuery;
 
-                // 🔍 Tìm kiếm theo tên file
+                // Tìm kiếm theo tên file
                 if (search_content) {
                     condition.name = { $regex: search_content, $options: 'i' };
                 }
 
-                // 👤 Lọc theo user và quyền
+                //  Lọc theo user và quyền
                 if (user && permission) {
                     const isSameUser = user === user_id;
 
@@ -170,13 +177,12 @@ const fileController = {
                     }
                 }
 
-
-                // 📁 Lọc theo loại tài liệu
+                // Lọc theo loại tài liệu
                 if (document_category) {
                     condition.document_category = document_category;
                 }
 
-                // 🗂 Lọc theo loại file
+                // Lọc theo loại file
                 if (document_type) {
                     if (document_type === "hình ảnh") {
                         condition.document_type = { $in: ["jpeg", "jpg", "png"] };
@@ -185,7 +191,7 @@ const fileController = {
                     }
                 }
 
-                // 🕒 Lọc theo ngày chỉnh sửa
+                // Lọc theo ngày chỉnh sửa
                 if (date_after || date_before) {
                     condition.last_modified = {};
                     if (date_after) {
@@ -230,8 +236,8 @@ const fileController = {
     downloadFile: async (req: Request, res: Response) => {
         try {
             const { fileId } = req.params;
-            console.log("Download file ID:", fileId);
-            const userId = req.user_id;
+            console.log("Request to download file ID:", fileId);
+            const userId = req.user_id; // Đảm bảo req.user_id tồn tại từ middleware xác thực
 
             // 1. Tìm file trong DB
             const file = await File.findById(fileId);
@@ -249,35 +255,28 @@ const fileController = {
                 return;
             }
 
-            // 3. Tạo command để lấy object từ S3
+            // 3. Tạo command để lấy object từ S3 và tạo Pre-signed URL
             const command = new GetObjectCommand({
                 Bucket: process.env.S3_BUCKET_NAME!,
                 Key: file.key,
+                ResponseContentDisposition: `attachment; filename="${encodeURIComponent(file.name)}"; filename*=UTF-8''${encodeURIComponent(file.name)}`
             });
 
-            const data = await s3.send(command);
+            // Thời gian hiệu lực của URL (ví dụ: 5 phút)
+            const expiresIn = 300; // seconds
 
-            const fileName = encodeURIComponent(file.name); // mã hóa UTF-8
+            const signedUrl = await getSignedUrl(s3, command, { expiresIn: expiresIn });
 
-            // 4. Thiết lập headers để trình duyệt tự động tải về
-            res.setHeader("Content-Type", data.ContentType || "application/octet-stream");
-            res.setHeader("Content-Disposition", `attachment; filename="${fileName}"; filename*=UTF-8''${fileName}`);
-
-            if (!data.Body) {
-                console.error("S3 response does not contain Body");
-                res.status(500).json({ message: "No file data returned from S3" });
-                return;
-            }
-            // 5. Stream file từ S3 về client
-            if (data.Body instanceof Readable) {
-                data.Body.pipe(res);
-            } else {
-                res.status(500).json({ message: "Unable to stream file" });
-                return;
-            }
+            // 4. Trả về Pre-signed URL và tên file cho Frontend
+            // Frontend sẽ sử dụng URL này để tải trực tiếp từ S3
+            res.status(200).json({
+                url: signedUrl,
+                fileName: file.name,
+                // contentType: file.contentType || "application/octet-stream" // Nếu bạn lưu contentType trong DB
+            });
 
         } catch (error) {
-            console.error("Download file error:", error);
+            console.error("Error generating pre-signed URL:", error);
             res.status(500).json({ message: "Internal server error" });
         }
     },
@@ -354,6 +353,8 @@ const fileController = {
                 res.status(404).json({ message: "File not found" });
                 return;
             }
+            file.last_modified = new Date(); // Cập nhật thời gian sửa đổi
+            await file.save(); // Lưu lại thay đổi
 
             // 2. Kiểm tra quyền truy cập
             const isOwner = file.owner_id.toString() === userId;
@@ -368,6 +369,7 @@ const fileController = {
             const command = new GetObjectCommand({
                 Bucket: process.env.S3_BUCKET_NAME!,
                 Key: file.key,
+                ResponseContentDisposition: 'inline'
             });
 
             const url = await getSignedUrl(s3, command, { expiresIn: 60 * 10 }); // 10 phút
@@ -379,7 +381,65 @@ const fileController = {
             res.status(500).json({ message: "Internal server error" });
             return;
         }
+    },
+    shareFile: async (req: Request, res: Response) => {
+        try {
+            const { file_id, user_share } = req.body;
+
+            if (!file_id || !user_share) {
+                res.status(400).json({ message: 'file_id và user_share là bắt buộc.' });
+                return;
+            }
+
+            const file = await File.findById(file_id);
+            if (!file) {
+                res.status(404).json({ message: 'Không tìm thấy file.' });
+                return;
+            }
+
+            // Kiểm tra xem đã chia sẻ chưa
+            if (!Array.isArray(file.shared_with)) {
+                file.shared_with = [];
+            }
+
+            if (!file.shared_with.includes(user_share)) {
+                file.shared_with.push(user_share);
+                await file.save(); // Đảm bảo đã lưu
+            }
+
+            // Load lại từ DB để chắc chắn đã lưu
+            const updatedFile = await File.findById(file_id);
+
+            res.status(200).json({
+                message: 'Chia sẻ file thành công.',
+                shared_with: updatedFile?.shared_with,
+            });
+            return;
+        } catch (error) {
+            console.error('Lỗi khi chia sẻ file:', error);
+            res.status(500).json({ message: 'Lỗi server khi chia sẻ file.' });
+            return;
+        }
     }
 };
+
+async function getUniqueName(name: string, parent_folder: string | null): Promise<string> {
+    const ext = path.extname(name); // lấy .pdf
+    const base = path.basename(name, ext); // lấy file (không có .pdf)
+
+    let uniqueName = name;
+    let count = 1;
+
+    while (true) {
+        const isExist = await File.exists({ name: uniqueName, parent_folder });
+
+        if (!isExist) break;
+
+        uniqueName = `${base} (${count})${ext}`;
+        count++;
+    }
+
+    return uniqueName;
+}
 
 export default fileController;

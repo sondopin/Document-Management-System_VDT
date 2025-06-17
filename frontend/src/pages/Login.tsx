@@ -68,7 +68,7 @@ const LoginPage: React.FC = () => {
               Login to your Account
             </h1>
             <p className="font-normal text-[20px] text-[#223a60]">
-              Welcome back! We're always ready for your flight
+              Welcome back! Please enter your details.
             </p>
           </div>
           <form onSubmit={onSubmit} className="flex flex-col">

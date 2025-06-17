@@ -5,7 +5,6 @@ import RegisterPage from "./pages/Register";
 import Layout from "./layouts/Layout";
 import HomePage from "./pages/Home";
 import PrivateRoute from "./guards/PrivateRoute";
-import RejectedRoute from "./guards/RejectedRoute";
 import UserProfile from "./pages/UserProfile";
 import {FolderProvider} from "./context/folder.context";
 
@@ -45,55 +44,55 @@ export default function createRoutes() {
       path: PATH.home,
       index: true,
       element: (
-        <Layout>
-          <FolderProvider>
+        <FolderProvider>
+          <Layout>
             <HomePage />
-          </FolderProvider>
-        </Layout>
+          </Layout>
+        </FolderProvider>
       ),
     },
         {
       path: PATH.myDrive,
       index: true,
       element: (
-        <Layout>
-          <FolderProvider>
+        <FolderProvider>
+          <Layout>
             <HomePage />
-          </FolderProvider>
-        </Layout>
+          </Layout>
+        </FolderProvider>
       ),
     },
         {
       path: PATH.shared,
       index: true,
       element: (
-        <Layout>
-          <FolderProvider>
+        <FolderProvider>
+          <Layout>
             <HomePage />
-          </FolderProvider>
-        </Layout>
+          </Layout>
+        </FolderProvider>
       ),
     },
         {
       path: PATH.trash,
       index: true,
       element: (
-        <Layout>
-          <FolderProvider>
+        <FolderProvider>
+          <Layout>
             <HomePage />
-          </FolderProvider>
-        </Layout>
+          </Layout>
+        </FolderProvider>
       ),
     },
     {
       path: PATH.folder(":folderId"),
       index: true,
       element: (
-        <Layout>
-          <FolderProvider>
+        <FolderProvider>
+          <Layout>
             <HomePage />
-          </FolderProvider>
-        </Layout>
+          </Layout>
+        </FolderProvider>
       ),
     },
   ]);

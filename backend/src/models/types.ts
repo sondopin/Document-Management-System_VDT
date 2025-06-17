@@ -16,9 +16,8 @@ export type FileType = {
     document_category?: string;
     last_modified?: Date;
     key: string; // Unique identifier for the file, e.g., S3 key
-    
     owner_id: string; // Reference to UserType
-    shared_with?: string[]; // Array of UserType references
+    shared_with?: string[];
     is_public?: boolean;
     parent_folder?: string; // Reference to FolderType
     is_deleted?: boolean; // Flag to indicate if the file is deleted

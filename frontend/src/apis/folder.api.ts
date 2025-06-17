@@ -8,16 +8,32 @@ type GetFolderParams = {
   searchQuery?: searchQueryForm;
 };
 
+// Hàm 1: Gửi cấu trúc folder để lấy danh sách URL
+export const prepareFolderUploadAPI = async (
+    folder_structure: any[],
+    parent_folder: string | null
+) => {
+    return http.post("/folders/prepare-upload", {
+        folder_structure,
+        parent_folder,
+    });
+};
+
+// Hàm uploadFileToS3 giữ nguyên từ ví dụ trước
+
+// Hàm 2: Gửi xác nhận sau khi tất cả file đã upload xong
+export const completeFolderUploadAPI = async (
+    completedFiles: { fileId: string, fileSize: number }[]
+) => {
+    return http.post("/folders/complete-upload", { completedFiles });
+};
+
+
+
 export const getFolders = async (params: GetFolderParams) => {
   const response = await http.post<{ folders: Folders }>('/folders/getfolders', params );
   return response.data.folders;
 }
-
-export const uploadFolderAPI = async (formData: FormData) => {
-  return http.post("/folders/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-};
 
 export const createFolderAPI = async (data: {
   name: string;
@@ -47,3 +63,6 @@ export const recoveryFolder = async (folderId: string) => {
 export const updateFolderAPI = async (folder_id: string, data: { name: string }) => {
   return http.post(`/folders/update/${folder_id}`, data);
 }
+export const shareFolderAPI = async (folder_id: string, user_share: string) => {
+  return http.post(`/folders/share`, { folder_id, user_share });
+};

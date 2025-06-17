@@ -8,13 +8,6 @@ import authController from "../controllers/auth";
 
 const router = express.Router();
 
-/**
- * @route POST /api/auth/login
- * @desc Login a user and assign a JWT token (with id and role)
- * @access Public
- * @param {Request} req - The request object containing user credentials
- * @param {Response} res - The response object to send data back
- */
 router.post("/login", authController.login);
 
 router.post("/register", authController.register);

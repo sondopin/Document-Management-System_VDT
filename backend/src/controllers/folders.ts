@@ -1,9 +1,12 @@
 import { Request, Response } from "express";
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { File } from "../models/file";
 import { Folder } from "../models/folder";
 import archiver from "archiver";
 import { Readable } from "stream";
+import path from "path";
+import { sanitizeFileNamePart } from "../utils/utils";
 
 const s3 = new S3Client({
     region: process.env.AWS_REGION as string,
@@ -40,90 +43,142 @@ const getAllFilesInFolder = async (
     return allItems;
 };
 
+async function getUniqueName(name: string, parent_folder: string | null): Promise<string> {
+    const ext = path.extname(name); 
+    const base = path.basename(name, ext);
+
+    let uniqueName = name;
+    let count = 1;
+
+    while (true) {
+        const isExist = await Folder.exists({ name: uniqueName, parent_folder });
+
+        if (!isExist) break;
+
+        uniqueName = `${base} (${count})${ext}`;
+        count++;
+    }
+
+    return uniqueName;
+}
 
 
 const folderController = {
-    uploadFolder: async (req: Request, res: Response) => {
+    prepareFolderUpload: async (req: Request, res: Response) => {
         try {
             const user_id = req.user_id;
-            const folderStructure = JSON.parse(req.body.folder_structure);
-            const parent_folder = req.body.parent_folder || null; // thư mục cha gốc
+            const folderStructure = req.body.folder_structure;
+            const parent_folder = req.body.parent_folder || null;
 
-            const fileMap: Map<string, Express.Multer.File> = new Map();
-            if (Array.isArray(req.files)) {
-                for (const file of req.files as Express.Multer.File[]) {
-                    fileMap.set(file.originalname, file);
-                }
+            if (!folderStructure) {
+                res.status(400).json({ message: "folder_structure is required" });
+                return;
             }
 
-            const allFolderIds: string[] = [];
+            const filesToUpload: { relativePath: string, uploadUrl: string, fileId: string }[] = [];
 
-            // Hàm xử lý đệ quy folder & file
-            async function processNode(node: any, parentFolderId: string | null, currentPath: string) {
+            async function processNode(node: any, parentFolderId: string | null, currentS3Path: string) {
                 if (node.type === 'folder') {
+                    const uniqueName = await getUniqueName(node.name, parentFolderId);
                     const folderDoc = new Folder({
-                        name: node.name,
+                        name: uniqueName,
                         owner_id: user_id,
                         parent_folder: parentFolderId,
-                        files: [],
                     });
                     await folderDoc.save();
-                    allFolderIds.push(folderDoc._id.toString());
+                    const newFolderId = folderDoc._id.toString();
+                    const newS3Path = `${currentS3Path}${node.name}/`; // Xây dựng đường dẫn S3
 
-                    // Đệ quy children nếu có
                     for (const child of node.children || []) {
-                        await processNode(child, folderDoc._id.toString(), `${currentPath}/${node.name}`);
+                        await processNode(child, newFolderId, newS3Path);
                     }
-                } else if (node.type === 'file') {
-                    const fileKey = `${Date.now()}_${node.name}`;
-                    const fileName = node.name;
-                    const matchedFile = [...fileMap.values()].find(f => f.originalname === fileName);
+                }
 
-                    if (!matchedFile) {
-                        console.warn(`Không tìm thấy file '${fileName}' từ FE`);
-                        return;
-                    }
+                else if (node.type === 'file') {
+                    const now = new Date();
+                    const formattedTime = now
+                        .toISOString()
+                        .replace(/:/g, "-")
+                        .replace(/\..+/, "")
+                        .replace("T", "_");
+                    
+                    const sanitizedFileName = sanitizeFileNamePart(node.name);
+                    const fileKey = `${currentS3Path}${formattedTime}_${sanitizedFileName}`;
 
-                    const document_type = (matchedFile.originalname ?? '').split('.').pop()?.toLowerCase() ?? '';
+                    const document_type = (node.name ?? '').split('.').pop()?.toLowerCase() ?? '';
+                    const uniqueName = await getUniqueName(node.name, parentFolderId); 
 
 
                     const fileDoc = new File({
-                        name: matchedFile.originalname,
-                        size: matchedFile.size,
+                        name: uniqueName,
+                        size: 0, // Sẽ cập nhật sau
                         document_type: document_type,
                         last_modified: new Date(),
                         key: fileKey,
                         owner_id: user_id,
-                        parent_folder: parentFolderId || null,
+                        parent_folder: parentFolderId,
                     });
+                    await fileDoc.save();
+                    const file_id = fileDoc._id.toString();
 
-                    await s3.send(new PutObjectCommand({
+                    // Tạo Presigned URL cho file này
+                    const command = new PutObjectCommand({
                         Bucket: process.env.S3_BUCKET_NAME,
                         Key: fileKey,
-                        Body: matchedFile.buffer,
-                        ContentType: matchedFile.mimetype,
                         Metadata: {
-                            file_id: fileDoc._id.toString(),
-                        },
-                    }));
+                            'file_id': file_id, 
+                        }
+                    });
+                    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 }); // Cho thời gian dài hơn vì có thể nhiều file
 
-                    await fileDoc.save();
+                    filesToUpload.push({
+                        relativePath: node.path, 
+                        uploadUrl,
+                        fileId: file_id,
+                    });
                 }
             }
 
-            // Bắt đầu xử lý từng node gốc với parent_folder đã truyền
+            // Bắt đầu xử lý với parent_folder gốc và đường dẫn S3 gốc
+            const rootS3Path = `${user_id}/`; // Bắt đầu đường dẫn S3 bằng user_id
             for (const rootNode of folderStructure) {
-                await processNode(rootNode, parent_folder, '');
+                await processNode(rootNode, parent_folder, rootS3Path);
             }
 
             res.status(200).json({
-                message: 'Folder structure uploaded successfully',
-                folder_ids: allFolderIds,
+                message: 'Folder structure processed. Ready for upload.',
+                filesToUpload,
             });
 
         } catch (err: any) {
-            console.error('Upload Folder Error:', err);
-            res.status(500).json({ message: 'Upload failed', error: err.message });
+            console.error('Prepare Folder Upload Error:', err);
+            res.status(500).json({ message: 'Failed to prepare folder upload', error: err.message });
+        }
+    },
+
+    completeFolderUpload: async (req: Request, res: Response) => {
+        try {
+            const { completedFiles }: { completedFiles: { fileId: string, fileSize: number }[] } = req.body;
+
+            if (!completedFiles || completedFiles.length === 0) {
+                res.status(400).json({ message: 'No files to confirm.' });
+                return;
+            }
+
+            const bulkOps = completedFiles.map(file => ({
+                updateOne: {
+                    filter: { _id: file.fileId },
+                    update: { $set: { size: file.fileSize } },
+                }
+            }));
+
+            await File.bulkWrite(bulkOps);
+
+            res.status(200).json({ message: 'Folder upload completed and confirmed.' });
+
+        } catch (err: any) {
+            console.error('Complete Folder Upload Error:', err);
+            res.status(500).json({ message: 'Failed to confirm folder upload', error: err.message });
         }
     },
     updateFolder: async (req: Request, res: Response) => {
@@ -153,11 +208,11 @@ const folderController = {
                 res.status(400).json({ message: "Folder name is required" });
                 return;
             }
-
+            const uniqueName = await getUniqueName(name, parent_folder);
             const newFolder = new Folder({
-                name,
+                name: uniqueName,
                 owner_id: user_id,
-                parent_folder: parent_folder || null, // vì là thư mục gốc
+                parent_folder: parent_folder || null,
                 shared_with: [],
                 is_public: false,
             });
@@ -191,6 +246,7 @@ const folderController = {
                 case 'shared':
                     condition.shared_with = { $in: [user_id] };
                     condition.is_deleted = false;
+                    condition.parent_folder = parent_folder ?? null;
                     break;
 
                 case 'trash':
@@ -203,7 +259,7 @@ const folderController = {
                     return;
             }
 
-            // --- Apply advanced search filters ---
+            // --- Apply advanced search filters 
             if (searchQuery) {
                 const {
                     search_content,
@@ -215,37 +271,54 @@ const folderController = {
                     date_before
                 } = searchQuery;
 
-                // 🔍 Tìm kiếm theo tên
+                // Tìm kiếm theo tên file
                 if (search_content) {
                     condition.name = { $regex: search_content, $options: 'i' };
                 }
 
-                // 👥 Lọc theo user và quyền
+                // Lọc theo user và quyền
                 if (user && permission) {
+                    const isSameUser = user === user_id;
+
                     if (option === 'owner') {
-                        if (permission === 'shared') {
-                            // Tìm file owner là user hiện tại, được chia sẻ với 'user'
-                            condition.shared_with = { $in: [user] };
+                        if (isSameUser) {
+                            if (permission === 'Được chia sẻ với') {
+                                // Không hiển thị gì vì user không thể tự chia sẻ cho chính mình
+                                // → ép điều kiện sai
+                                condition._id = null;
+                            }
+                        } else {
+                            if (permission === 'Chủ sở hữu') {
+                                // File do `user` sở hữu, đã chia sẻ với user_id
+                                condition._id = null;
+                            } else if (permission === 'Được chia sẻ với') {
+                                // File do user_id sở hữu, đã chia sẻ với `user`
+                                condition.shared_with = { $in: [user] };
+                            }
                         }
-                        // Nếu permission === 'owner' thì không cần lọc gì thêm (vì user hiện tại đã là owner)
                     }
 
                     if (option === 'shared') {
-                        if (permission === 'owner') {
-                            // Lọc các file mà user là owner
-                            condition.owner_id = user;
+                        if (!isSameUser) {
+                            if (permission === 'Chủ sở hữu') {
+                                // File do `user` sở hữu, đã chia sẻ với user_id
+                                condition.owner_id = user;
+                                condition.shared_with = { $in: [user_id] };
+                            } else if (permission === 'Được chia sẻ với') {
+                                // File mà user_id được chia sẻ, và `user` cũng nằm trong shared_with
+                                condition.shared_with = { $all: [user_id, user] };
+                            }
                         }
-                        // Nếu permission === 'shared' thì mặc định user hiện tại đang là người được chia sẻ
-                        // => không cần điều kiện gì thêm
+                        // Nếu isSameUser và option === 'shared', không cần filter gì thêm — lấy tất cả file được chia sẻ với user_id
                     }
                 }
 
-                // 📁 Lọc theo loại tài liệu
+                // Lọc theo loại tài liệu
                 if (document_category) {
-                    condition.document_category = document_category;
+                    condition.document_category = null;
                 }
 
-                // 🗂 Lọc theo loại file
+                // Lọc theo loại file
                 if (document_type) {
                     if (document_type === "hình ảnh") {
                         condition.document_type = { $in: ["jpeg", "jpg", "png"] };
@@ -254,7 +327,7 @@ const folderController = {
                     }
                 }
 
-                // 📅 Lọc theo ngày chỉnh sửa
+                //  Lọc theo ngày chỉnh sửa
                 if (date_after || date_before) {
                     condition.last_modified = {};
                     if (date_after) {
@@ -391,7 +464,53 @@ const folderController = {
             res.status(500).json({ message: "Failed to delete folder permanently", error: error.message });
             return;
         }
+    },
+    shareFolder: async (req: Request, res: Response) => {
+        const { folder_id, user_share } = req.body;
+
+        try {
+            // 1. Kiểm tra folder gốc
+            const rootFolder = await Folder.findById(folder_id);
+            if (!rootFolder) {
+                res.status(404).json({ message: "Folder not found" });
+                return;
+            }
+
+            // 2. Đệ quy chia sẻ folder và file
+            const shareRecursively = async (folderId: string) => {
+                const folder = await Folder.findById(folderId);
+                if (folder) {
+                    if (!folder.shared_with?.includes(user_share)) {
+                        folder.shared_with = [...(folder.shared_with || []), user_share];
+                    }
+                    await folder.save();
+                }
+
+                // Chia sẻ các file trong folder này
+                const files = await File.find({ parent_folder: folderId });
+                for (const file of files) {
+                    if (!file.shared_with?.includes(user_share)) {
+                        file.shared_with = [...(file.shared_with || []), user_share];
+                    }
+                    await file.save();
+                }
+
+                // Đệ quy với các folder con
+                const subfolders = await Folder.find({ parent_folder: folderId });
+                for (const subfolder of subfolders) {
+                    await shareRecursively(subfolder._id.toString());
+                }
+            };
+
+            await shareRecursively(folder_id);
+
+            res.status(200).json({ message: "Folder shared successfully (recursively)" });
+        } catch (error) {
+            console.error("Share folder error:", error);
+            res.status(500).json({ message: "Internal server error" });
+        }
     }
+
 };
 
 

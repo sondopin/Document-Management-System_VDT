@@ -5,14 +5,14 @@ import bcrypt from "bcryptjs";
 const userController = {
   // Get current user's profile, excluding the password
   me: async (req: Request, res: Response) => {
-    const user_id = req.user_id; 
+    const user_id = req.user_id;
     try {
       const user = await User.findById(user_id).select("-password"); // Find user by ID, excluding password
       if (!user) {
         res.status(400).json({ message: "User not found" });
         return;
       }
-      res.json(user); 
+      res.json(user);
     } catch (error) {
       console.log(error);
       res.status(500).json({ message: "Cannot get user profile" });
@@ -21,18 +21,18 @@ const userController = {
 
   // Update user's profile with the provided data
   update: async (req: Request, res: Response) => {
-    const user_id = req.user_id; 
-    const updates = req.body; 
+    const user_id = req.user_id;
+    const updates = req.body;
 
     try {
       const user = await User.findByIdAndUpdate(user_id, updates, {
-        new: true, 
+        new: true,
       });
       if (!user) {
         res.status(404).json({ message: "User not found" });
         return;
       }
-      res.json(user); 
+      res.json(user);
     } catch (error) {
       console.log(error);
       res.status(500).json({ message: "Cannot update user profile" });
@@ -41,8 +41,8 @@ const userController = {
 
   // Change user's password
   changePassword: async (req: Request, res: Response) => {
-    const user_id = req.user_id; 
-    const { currentPassword, newPassword, confirmNewPassword } = req.body; 
+    const user_id = req.user_id;
+    const { currentPassword, newPassword, confirmNewPassword } = req.body;
 
     // Ensure the new passwords match
     if (newPassword !== confirmNewPassword) {
@@ -64,8 +64,8 @@ const userController = {
         return;
       }
 
-      user.password = newPassword; 
-      await user.save(); 
+      user.password = newPassword;
+      await user.save();
 
       res.json({ message: "Password changed successfully" });
     } catch (error) {
@@ -76,7 +76,7 @@ const userController = {
   findUserByEmail: async (req: Request, res: Response) => {
     const { email } = req.body; // Get email from request body
     try {
-      const users = await User.find({ email: { $regex: `^${email}`, $options: 'i' }});
+      const users = await User.find({ email: { $regex: `^${email}`, $options: 'i' } });
       if (!users || users.length === 0) {
         res.status(404).json({ message: "User not found" });
         return;

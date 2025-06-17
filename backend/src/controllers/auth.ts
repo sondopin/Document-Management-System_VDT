@@ -44,7 +44,7 @@ const authController = {
 
       // Create token with id and role
       const token = jwt.sign(
-        { user_id: user.id},
+        { user_id: user.id },
         process.env.JWT_SECRET_KEY as string,
         {
           expiresIn: "1d",
@@ -57,7 +57,7 @@ const authController = {
         secure: process.env.NODE_ENV === "production",
         maxAge: 86400000,
       });
-      res.status(200).json({token});
+      res.status(200).json({ token });
     } catch (error) {
       console.log(error);
       res.status(500).json({ message: "Cannot login" });
@@ -106,7 +106,7 @@ const authController = {
         secure: process.env.NODE_ENV === "production",
         maxAge: 86400000,
       });
-      res.status(200).send({ token});
+      res.status(200).send({ token });
       return;
     } catch (error) {
       console.log(error);

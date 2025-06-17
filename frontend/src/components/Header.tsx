@@ -1,18 +1,15 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { Fragment, useContext } from "react";
 import { AppContext } from "../context/app.context";
 import { Dropdown } from "antd";
 import { logout } from "../apis/auth.api";
-import { PATH } from "../constants/path";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCurrentUser } from "../apis/user.api";
-import Search from "antd/es/transfer/search";
 import SearchBar from "./SearchBar";
 
 // Header component displays the navigation bar with dynamic links based on the user's authentication status and role (Admin or User).
 const Header = () => {
 
-    const location = useLocation();
     const { isAuthenticated, setIsAuthenticated } = useContext(AppContext);
     // Fetch current user data when authenticated using React Query.
     const { data: user } = useQuery({
@@ -21,7 +18,6 @@ const Header = () => {
         enabled: isAuthenticated,
         staleTime: 1000 * 15,
     });
-
 
     // Menu items for the user's dropdown after authentication.
     const menuItems = [
@@ -54,7 +50,7 @@ const Header = () => {
     return (
         <div className="flex justify-between h-15 md:gap-[10px] gap-[10px] md:flex-row bg-gray-50 items-center px-[10px] py-[5px]">
             <NavLink className="flex items-center w-1/7" to="/drive/my-drive" state={{ option: "owner" }}>
-                <img 
+                <img
                     src="/logo.png"
                     className="h-[60px]"
                 />
@@ -76,7 +72,7 @@ const Header = () => {
                                 src="/account.png"
                                 className="w-8 h-6 text-2xl cursor-pointer md:w-12 md:h-8 min-w-8"
                             />
-                            <div className="text-white text-[16px] font-semibold">
+                            <div className="text-black text-[16px] font-semibold">
                                 {user?.user_name}
                             </div>
                         </div>

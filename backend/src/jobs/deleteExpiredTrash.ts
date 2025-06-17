@@ -33,7 +33,6 @@ cron.schedule("0 3 * * *", async () => {
     await File.findByIdAndDelete(file._id);
   }
 
-  // TODO: Thêm xử lý folder nếu muốn
     const oldFolders = await Folder.find({
         is_deleted: true,
         deleted_at: { $lte: expiredDate }

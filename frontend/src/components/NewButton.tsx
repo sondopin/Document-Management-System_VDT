@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 import { Plus } from 'lucide-react';
-import { uploadFilesAPI } from '../apis/file.api';
 import FileActions from './FileActions';
 
 const NewButton = () => {
@@ -30,7 +29,7 @@ const NewButton = () => {
 
       {isOpen && (
         <div className="absolute z-10 w-56 bg-white border rounded shadow-lg">
-          <FileActions/>
+          <FileActions />
         </div>
       )}
     </div>

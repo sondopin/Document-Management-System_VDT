@@ -1,12 +1,12 @@
-import { useForm } from "react-hook-form"; 
-import * as apiClient from "../apis/user.api"; 
+import { useForm } from "react-hook-form";
+import * as apiClient from "../apis/user.api";
 import { ChangePasswordParams } from "../types/user.type";
-import { Button } from "antd"; 
-import { useNavigate } from "react-router-dom"; 
+import { Button } from "antd";
+import { useNavigate } from "react-router-dom";
 
 
 const PasswordChange = () => {
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
 
   const {
     register,
@@ -17,8 +17,8 @@ const PasswordChange = () => {
 
   const onSubmit = async (data: ChangePasswordParams) => {
     try {
-      await apiClient.changePassword(data); 
-      navigate("/"); 
+      await apiClient.changePassword(data);
+      navigate("/");
     } catch (error: any) {
       console.error(error);
     }
@@ -51,13 +51,13 @@ const PasswordChange = () => {
                 required: "This field is required", // Validation message if field is empty
                 minLength: {
                   value: 6,
-                  message: "Password must be at least 6 characters", 
+                  message: "Password must be at least 6 characters",
                 },
               })}
             />
             {errors.currentPassword && (
               <span className="text-red-500 font-normal mt-1">
-                {errors.currentPassword.message} 
+                {errors.currentPassword.message}
               </span>
             )}
           </div>
@@ -76,13 +76,13 @@ const PasswordChange = () => {
                 required: "This field is required", // Validation message if field is empty
                 minLength: {
                   value: 6,
-                  message: "Password must be at least 6 characters", 
+                  message: "Password must be at least 6 characters",
                 },
               })}
             />
             {errors.newPassword && (
               <span className="text-red-500 font-normal mt-1">
-                {errors.newPassword.message} 
+                {errors.newPassword.message}
               </span>
             )}
           </div>
@@ -106,7 +106,7 @@ const PasswordChange = () => {
             />
             {errors.confirmNewPassword && (
               <span className="text-red-500 font-normal mt-1">
-                {errors.confirmNewPassword.message} 
+                {errors.confirmNewPassword.message}
               </span>
             )}
           </div>
@@ -117,7 +117,7 @@ const PasswordChange = () => {
           <Button
             type="primary"
             className="bg-mint text-black font-semibold"
-            onClick={handleSubmit(onSubmit)} 
+            onClick={handleSubmit(onSubmit)}
           >
             Save
           </Button>

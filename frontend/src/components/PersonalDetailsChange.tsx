@@ -4,7 +4,6 @@ import * as apiClient from "../apis/user.api";
 import { UserProfileFormData } from "../types/user.type";
 import { Button } from "antd";
 
-
 const InformationChange = () => {
 
   // useForm hook to handle form submission, validation, and setting form values
@@ -23,14 +22,14 @@ const InformationChange = () => {
       try {
         const user = await apiClient.fetchCurrentUser();
         setValue("user_name", user.user_name);
-        setValue("email", user.email); 
+        setValue("email", user.email);
       } catch (error) {
         console.error("Failed to fetch user:", error);
       }
     };
 
     fetchUser();
-  }, [setValue]); 
+  }, [setValue]);
 
   // Handle form submission to update user profile
   const onSubmit = async (data: UserProfileFormData) => {
@@ -63,9 +62,8 @@ const InformationChange = () => {
             Full Name
           </label>
           <input
-            className={`rounded bg-white w-full py-1 px-2 font-normal ${
-              isEditing ? " border-mint border" : ""
-            }`}
+            className={`rounded bg-white w-full py-1 px-2 font-normal ${isEditing ? " border-mint border" : ""
+              }`}
             type="text"
             {...register("user_name", {
               required: "This field is required", // Validation for required field
@@ -91,7 +89,7 @@ const InformationChange = () => {
             {...register("email", {
               required: "This field is required", // Validation for required field
             })}
-            disabled 
+            disabled
           />
         </div>
         {errors.email && (
@@ -99,7 +97,7 @@ const InformationChange = () => {
             style={{ fontSize: "14px" }}
             className="text-red-500 font-normal"
           >
-            {errors.email.message} 
+            {errors.email.message}
           </span>
         )}
         <div className="flex justify-between px-4 py-3 bg-gray-50 text-right sm:px-6">
@@ -108,14 +106,14 @@ const InformationChange = () => {
               <Button
                 type="primary"
                 className="bg-mint text-black font-semibold"
-                onClick={() => setIsEditing(false)} 
+                onClick={() => setIsEditing(false)}
               >
                 Cancel
               </Button>
               <Button
                 type="primary"
                 className="bg-mint text-black font-semibold"
-                onClick={handleSubmit(onSubmit)} 
+                onClick={handleSubmit(onSubmit)}
               >
                 Save
               </Button>
@@ -124,7 +122,7 @@ const InformationChange = () => {
             <Button
               type="primary"
               className="bg-mint text-black font-semibold"
-              onClick={() => setIsEditing(true)} 
+              onClick={() => setIsEditing(true)}
             >
               Edit
             </Button>
