@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import {File} from "../models/file";
 import {Folder} from "../models/folder";
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 const s3 = new S3Client({
     region: process.env.AWS_REGION,

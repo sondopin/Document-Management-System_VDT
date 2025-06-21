@@ -25,4 +25,6 @@ router.post('/delete-permanently', verifyToken, folderController.deleteFolderPer
 
 router.post('/share', verifyToken, folderController.shareFolder);
 
+router.post('/unshare', verifyToken, folderController.unShareFolder);
+
 export default router;

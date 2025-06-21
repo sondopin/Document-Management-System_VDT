@@ -9,7 +9,6 @@ export interface File {
     
     owner_id: string; // Reference to UserType
     shared_with?: string[]; // Array of UserType references
-    is_public?: boolean;
     parent_folder?: string; // Reference to FolderType
     is_deleted?: boolean; // Flag to indicate if the file is deleted
     deleted_at?: Date; // Timestamp when the file was deleted
@@ -24,6 +23,16 @@ export interface searchQueryForm{
     document_type?: string;
     date_after?: Date | null;
     date_before?: Date | null;
+}
+
+// Định nghĩa ở component của bạn
+export interface UploadingFile {
+    id: string;
+    name: string;
+    progress: number;
+    status: 'uploading' | 'confirming' | 'success' | 'error';
+    type: string; // Phân biệt loại mục upload
+    errorMessage?: string;
 }
 
 export type Files = File[];

@@ -6,6 +6,7 @@ import cookie from "cookie-parser";
 import router from "./routes/index";
 import path from "path";
 import bodyParser from "body-parser";
+import '../src/jobs/deleteExpiredTrash';
 
 mongoose.connect(process.env.MONGODB_CONNECTION_STRING as string);
 if(mongoose.connection) {

@@ -5,7 +5,7 @@ import { useFolder } from '../context/folder.context';
 import { X } from "lucide-react";
 
 const documentCategories = ["not_classified", "business", "entertainment", "politics", "sport", "tech"];
-const document_types = ["Thư mục", "pdf", "Hình ảnh", "docx"];
+const document_types = ["Folder", "pdf", "Hình ảnh", "docx"];
 
 const EDIT_TIME_OPTIONS = [
     "Hôm nay",

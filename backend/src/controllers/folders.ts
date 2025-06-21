@@ -214,7 +214,6 @@ const folderController = {
                 owner_id: user_id,
                 parent_folder: parent_folder || null,
                 shared_with: [],
-                is_public: false,
             });
 
             await newFolder.save();
@@ -508,6 +507,37 @@ const folderController = {
         } catch (error) {
             console.error("Share folder error:", error);
             res.status(500).json({ message: "Internal server error" });
+        }
+    },
+    unShareFolder: async (req: Request, res: Response) => {
+        const { folder_id } = req.body;
+        const user_id = req.user_id;
+
+        try {
+            const folder = await Folder.findById(folder_id);
+            if (!folder) {
+                res.status(404).json({ message: 'Không tìm thấy thư mục.' });
+                return;
+            }
+
+            // Kiểm tra xem đã chia sẻ chưa
+            if (Array.isArray(folder.shared_with) && folder.shared_with.includes(user_id)) {
+                folder.shared_with = folder.shared_with.filter(uid => uid !== user_id);
+                await folder.save(); // Đảm bảo đã lưu
+            }
+
+            // Load lại từ DB để chắc chắn đã lưu
+            const updatedFolder = await Folder.findById(folder_id);
+
+            res.status(200).json({
+                message: 'Hủy chia sẻ thư mục thành công.',
+                shared_with: updatedFolder?.shared_with,
+            });
+            return;
+        } catch (error) {
+            console.error('Lỗi khi hủy chia sẻ thư mục:', error);
+            res.status(500).json({ message: 'Lỗi server khi hủy chia sẻ thư mục.' });
+            return;
         }
     }
 

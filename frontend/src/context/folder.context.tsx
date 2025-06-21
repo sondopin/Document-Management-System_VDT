@@ -1,5 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 import { searchQueryForm } from '../types/file.type';
+import { UploadingFile } from '../types/file.type';
 
 interface FolderContextType {
     parentFolder: string | null;
@@ -12,6 +13,10 @@ interface FolderContextType {
     setRefetchAll: (refetch: () => void) => void;
     searchQuery: searchQueryForm;
     setSearchQuery: (searchQuery: searchQueryForm) => void;
+    showProgress: boolean; // Optional property to show progress
+    setShowProgress: (show: boolean) => void; // Optional setter for showProgress
+    uploadingFiles: UploadingFile[]; // Optional property to track uploading files
+    setUploadingFiles: React.Dispatch<React.SetStateAction<UploadingFile[]>>; // Optional setter for uploadingFiles
 }
 
 const initialFolderContext: FolderContextType = {
@@ -25,6 +30,10 @@ const initialFolderContext: FolderContextType = {
     setRefetchAll: () => null,
     searchQuery: {},
     setSearchQuery: () => null,
+    showProgress: false, // Default value for showProgress
+    setShowProgress: () => null, // Default setter for showProgress
+    uploadingFiles: [], // Default value for uploading files
+    setUploadingFiles: () => null, // Default setter for uploading files
 };
 
 const FolderContext = createContext<FolderContextType>(initialFolderContext);
@@ -40,9 +49,11 @@ export const FolderProvider = ({ children }: { children: React.ReactNode }) => {
         return () => {};
     });
     const [searchQuery, setSearchQuery] = useState<searchQueryForm>({});
+    const [showProgress, setShowProgress] = useState<boolean>(false); // State for showing progress
+    const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]); // State for uploading files
 
     return (
-        <FolderContext.Provider value={{ parentFolder, setParentFolder, breadcrumbs, setBreadcrumbs, option, setOption, refetchAll, setRefetchAll, searchQuery, setSearchQuery }}>
+        <FolderContext.Provider value={{ parentFolder, setParentFolder, breadcrumbs, setBreadcrumbs, option, setOption, refetchAll, setRefetchAll, searchQuery, setSearchQuery, showProgress, setShowProgress, uploadingFiles, setUploadingFiles }}>
             {children}
         </FolderContext.Provider>
     );

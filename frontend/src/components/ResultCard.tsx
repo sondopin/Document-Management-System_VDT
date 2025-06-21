@@ -5,8 +5,8 @@ import { Folder } from '../types/folder.type';
 import { findUserById, findUserByEmail } from '../apis/user.api';
 import { fetchCurrentUser } from '../apis/user.api';
 import { User } from '../types/user.type';
-import { deleteFileAPI, downloadFile, deleteFilePermanently, recoveryFile, getPresignedUrl, updateFileAPI, shareFileAPI } from '../apis/file.api';
-import { deleteFolderAPI, downloadFolder, deleteFolderPermanently, recoveryFolder, updateFolderAPI, shareFolderAPI } from '../apis/folder.api';
+import { deleteFileAPI, downloadFile, deleteFilePermanently, recoveryFile, getPresignedUrl, updateFileAPI, shareFileAPI, unShareFileAPI } from '../apis/file.api';
+import { deleteFolderAPI, downloadFolder, deleteFolderPermanently, recoveryFolder, updateFolderAPI, shareFolderAPI, unShareFolderAPI } from '../apis/folder.api';
 import { useFolder } from '../context/folder.context';
 import RenameModal from './RenameModal';
 
@@ -33,7 +33,7 @@ export default function ResultCard({ fifo, onDoubleClick, handleOpenFolder }: Re
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isFile = (fifo: File | Folder): fifo is File => {
-    return fifo.document_type !== 'thư mục';
+    return fifo.document_type !== 'folder';
   };
 
   useEffect(() => {
@@ -76,7 +76,7 @@ export default function ResultCard({ fifo, onDoubleClick, handleOpenFolder }: Re
   }, []);
 
   let iconUrl = '';
-  if (fifo.document_type === 'thư mục') {
+  if (fifo.document_type === 'folder') {
     iconUrl = '/folder.png'; // Icon for folders
   } else {
     switch (fifo.document_type) {
@@ -117,14 +117,11 @@ export default function ResultCard({ fifo, onDoubleClick, handleOpenFolder }: Re
       if (isFile(fifo)) {
         // Gọi API backend để lấy Pre-signed URL
         const response = await downloadFile(fifo._id);
-        const { url, fileName } = response.data; // Lấy URL và tên file từ response
+        const { url } = response.data; // Lấy URL và tên file từ response
 
         // Tạo một thẻ 'a' và thiết lập href là Pre-signed URL
         const link = document.createElement('a');
         link.href = url;
-        // Bỏ thuộc tính download nếu S3 đã thiết lập Content-Disposition header
-        // Tuy nhiên, để đảm bảo an toàn, bạn vẫn có thể giữ lại, nhưng nó có thể bị ghi đè bởi S3
-        // link.setAttribute('download', fileName);
         link.target = '_blank'; // Tùy chọn: mở trong tab mới để tránh điều hướng khỏi trang hiện tại
 
         document.body.appendChild(link);
@@ -238,6 +235,19 @@ export default function ResultCard({ fifo, onDoubleClick, handleOpenFolder }: Re
     }
   };
 
+  const handleUnshare = async () => {
+    try {
+      if (isFile(fifo)) {
+        await unShareFileAPI(fifo._id);
+      } else {
+        await unShareFolderAPI(fifo._id);
+      }
+      setMenuOpen(false);
+      refetchAll();
+    } catch (error) {
+      console.error('Unshare error:', error);
+    }
+  };
 
 
   return (
@@ -264,7 +274,7 @@ export default function ResultCard({ fifo, onDoubleClick, handleOpenFolder }: Re
 
         {/* Kích cỡ tệp */}
         <div className="text-gray-600 truncate px-4">
-          {fifo.document_type === "thư mục"
+          {fifo.document_type === "folder"
             ? "-"
             : `${(((fifo as File).size ?? 0) / 1024 / 1024).toFixed(2)} MB`}
         </div>
@@ -305,15 +315,14 @@ export default function ResultCard({ fifo, onDoubleClick, handleOpenFolder }: Re
               <button className="flex items-center px-4 py-2 w-full hover:bg-gray-100" onClick={() => setShowShare(!showShare)}>
                 <Share2 className="w-4 h-4 mr-2" /> Chia sẻ
               </button>
-              <button className="flex items-center px-4 py-2 w-full hover:bg-gray-100" onClick={() => setShowChangeCategory(!showChangeCategory)}>
+              <button className={`flex items-center px-4 py-2 w-full hover:bg-gray-100 ${fifo.document_type === 'folder' ? 'opacity-50 cursor-not-allowed hover:bg-transparent' : ''}`} onClick={() => setShowChangeCategory(!showChangeCategory)} disabled={fifo.document_type === 'folder'}>
                 <MoreVertical className="w-4 h-4 mr-2" /> Thay đổi loại tài liệu
               </button>
               <button
-                className={`flex items-center px-4 py-2 w-full text-red-500 ${option === 'shared' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-                onClick={handleDelete}
-                disabled={option === 'shared'}
+                className={`flex items-center px-4 py-2 w-full text-red-500`}
+                onClick={option === 'owner' ? handleDelete : handleUnshare}
               >
-                <Trash2 className="w-4 h-4 mr-2" /> Chuyển vào thùng rác
+                <Trash2 className="w-4 h-4 mr-2" /> {option === 'owner' ? 'Chuyển vào thùng rác' : 'Xóa'}
               </button>
             </div>
           )}

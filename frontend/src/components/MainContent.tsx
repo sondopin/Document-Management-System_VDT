@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import ResultCard from './ResultCard';
 import Filter from './Filter';
 import { FaArrowUp, FaArrowDown } from 'react-icons/fa';
+import UploadProgress from './UploadProgress';
 
 
 type SortType = {
@@ -31,7 +32,7 @@ const BreadCrumb = ({ path, onNavigate }: { path: { name: string, id: string | n
 );
 
 const MainContent = () => {
-    const { parentFolder, setParentFolder, breadcrumbs, setBreadcrumbs, option, setRefetchAll, searchQuery } = useFolder();
+    const { parentFolder, setParentFolder, breadcrumbs, setBreadcrumbs, option, setRefetchAll, searchQuery, setShowProgress, uploadingFiles, setUploadingFiles } = useFolder();
     const [sort, setSort] = useState<SortType>({
         name: "asc",
         last_modified: "asc"
@@ -96,6 +97,16 @@ const MainContent = () => {
         }
     };
 
+    const handleCloseProgress = () => {
+        // Chỉ giữ lại các file bị lỗi, xóa các file đã thành công
+        setUploadingFiles(uploadingFiles.filter(f => f.status === 'error'));
+        // Nếu không còn file nào lỗi thì đóng hẳn
+        if (uploadingFiles.every(f => f.status !== 'error')) {
+            setShowProgress(false);
+        }
+    }
+
+
     for (const key in sort) {
         const sortOrder = sort[key as keyof SortType];
         folders?.sort((a: Folder, b: Folder) => {
@@ -159,7 +170,7 @@ const MainContent = () => {
                         </button>
                     </div>
                     <div className="truncate items-center mt-2">{option === 'owner' || option === 'trash' ? 'Kích cỡ tệp' : ''}</div>
-                    <div className="truncate items-center mt-2">{option === 'owner' || option === 'shared' ? 'Loại tài liệu' : ''}
+                    <div className="truncate items-center mt-2">Loại tài liệu
                     </div>
                     <div></div> {/* Cột rỗng cho nút menu */}
 
@@ -172,6 +183,7 @@ const MainContent = () => {
                 {files.map(file => (
                     <ResultCard fifo={file} />
                 ))}
+                <UploadProgress files={uploadingFiles} onClose={handleCloseProgress} />
 
             </div>
         );

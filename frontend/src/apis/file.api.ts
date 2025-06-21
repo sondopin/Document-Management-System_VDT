@@ -2,7 +2,6 @@
 import http from "../utils/http";
 import {Files} from "../types/file.type";
 import { searchQueryForm } from "../types/file.type";
-import { AxiosProgressEvent } from "axios";
 
 type GetFilesParams = {
   option: string;
@@ -11,7 +10,6 @@ type GetFilesParams = {
 };
 
 
-// Hàm 1: Gọi BE để lấy presigned URL
 export const getUploadUrlAPI = async (
     fileName: string,
     fileType: string,
@@ -25,19 +23,36 @@ export const getUploadUrlAPI = async (
     });
 };
 
-// Hàm 2: (Không dùng http instance có sẵn vì ta gọi thẳng đến S3)
-// Đây chỉ là một hàm helper, bạn có thể viết trực tiếp trong component
-export const uploadFileToS3 = async (uploadUrl: string, file: File) => {
-    return fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: {
-            'Content-Type': file.type, // Header này rất quan trọng
-        },
+// File: services/api.ts
+export const uploadFileToS3WithProgress = (
+    uploadUrl: string,
+    file: File,
+    onProgress: (progress: { loaded: number; total: number }) => void
+): Promise<XMLHttpRequest> => {
+    // ... code của hàm này giữ nguyên như các bước trước
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadUrl, true);
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                onProgress({ loaded: event.loaded, total: event.total });
+            }
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                onProgress({ loaded: file.size, total: file.size });
+                resolve(xhr);
+            } else {
+                reject(new Error(`Upload failed: ${xhr.statusText}`));
+            }
+        };
+        xhr.onerror = () => reject(new Error("Network error."));
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.send(file);
     });
 };
 
-// (Tùy chọn) Hàm 3: Gọi BE để xác nhận upload đã xong
+
 export const confirmUploadAPI = async (file_id: string, fileSize: number) => {
     return http.post("/files/confirm-upload", { file_id, fileSize });
 }
@@ -75,4 +90,8 @@ export const updateFileAPI = async (file_id: string, data: { name?: string, docu
 
 export const shareFileAPI = async (file_id: string, user_share: string) => {
   return http.post(`/files/share-user`, { file_id, user_share });
+}
+
+export const unShareFileAPI = async (file_id: string) => {
+  return http.post(`/files/unshare`, { file_id });
 }

@@ -66,3 +66,7 @@ export const updateFolderAPI = async (folder_id: string, data: { name: string })
 export const shareFolderAPI = async (folder_id: string, user_share: string) => {
   return http.post(`/folders/share`, { folder_id, user_share });
 };
+
+export const unShareFolderAPI = async (folder_id: string) => {
+  return http.post(`/folders/unshare`, { folder_id });
+}

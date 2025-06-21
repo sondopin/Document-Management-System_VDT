@@ -25,4 +25,6 @@ router.post('/share-link', verifyToken, fileController.getPresignedUrl);
 
 router.post('/share-user', verifyToken, fileController.shareFile);
 
+router.post('/unshare', verifyToken, fileController.unShareFile);
+
 export default router;

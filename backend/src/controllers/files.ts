@@ -44,7 +44,7 @@ const fileController = {
 
             const newFile = new File({
                 name: uniqueName,
-                size: 0, 
+                size: 0,
                 document_type: document_type,
                 last_modified: now,
                 key: key,
@@ -59,8 +59,8 @@ const fileController = {
             const command = new PutObjectCommand({
                 Bucket: process.env.S3_BUCKET_NAME,
                 Key: key,
-                ContentType: fileType, 
-                Metadata: { 
+                ContentType: fileType,
+                Metadata: {
                     file_id: file_id,
                 },
             });
@@ -418,6 +418,41 @@ const fileController = {
         } catch (error) {
             console.error('Lỗi khi chia sẻ file:', error);
             res.status(500).json({ message: 'Lỗi server khi chia sẻ file.' });
+            return;
+        }
+    },
+    unShareFile: async (req: Request, res: Response) => {
+        try {
+            const { file_id } = req.body;
+            const user_id = req.user_id;
+
+            if (!file_id) {
+                res.status(400).json({ message: 'file_id là bắt buộc.' });
+                return;
+            }
+            const file = await File.findById(file_id);
+            if (!file) {
+                res.status(404).json({ message: 'Không tìm thấy file.' });
+                return;
+            }
+
+            // Kiểm tra xem đã chia sẻ chưa
+            if (Array.isArray(file.shared_with) && file.shared_with.includes(user_id)) {
+                file.shared_with = file.shared_with.filter(uid => uid !== user_id);
+                await file.save(); // Đảm bảo đã lưu
+            }
+
+            // Load lại từ DB để chắc chắn đã lưu
+            const updatedFile = await File.findById(file_id);
+
+            res.status(200).json({
+                message: 'Hủy chia sẻ file thành công.',
+                shared_with: updatedFile?.shared_with,
+            });
+            return;
+        } catch (error) {
+            console.error('Lỗi khi hủy chia sẻ file:', error);
+            res.status(500).json({ message: 'Lỗi server khi hủy chia sẻ file.' });
             return;
         }
     }

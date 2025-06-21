@@ -18,7 +18,6 @@ export type FileType = {
     key: string; // Unique identifier for the file, e.g., S3 key
     owner_id: string; // Reference to UserType
     shared_with?: string[];
-    is_public?: boolean;
     parent_folder?: string; // Reference to FolderType
     is_deleted?: boolean; // Flag to indicate if the file is deleted
     deleted_at?: Date; // Timestamp when the file was deleted
@@ -32,7 +31,6 @@ export type FolderType = {
   
     owner_id: string; // Reference to UserType
     shared_with?: string[]; // Array of UserType references
-    is_public?: boolean;
     access_link?: string;
     parent_folder?: string; // Reference to another FolderType for nested folders
     is_deleted?: boolean; // Flag to indicate if the folder is deleted

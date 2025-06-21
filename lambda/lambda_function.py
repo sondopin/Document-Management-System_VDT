@@ -42,25 +42,25 @@ def extract_text(filepath, file_ext):
     if not os.path.exists(filepath):
         print(f"[ERROR] File not found: {filepath}")
         return ""
-    if file_ext == '.txt' or file_ext == '.md':
+    if file_ext == 'txt' or file_ext == 'md':
         with open(filepath, 'r', encoding='utf-8') as f:
             return f.read()
-    elif file_ext == '.pdf':
+    elif file_ext == 'pdf':
         doc = fitz.open(filepath)
         text = ""
         for page in doc:
             text += page.get_text()
         return text
-    elif file_ext in ['.docx', '.doc']:
+    elif file_ext in ['docx', 'doc']:
         doc = docx.Document(filepath)
         return "\n".join([para.text for para in doc.paragraphs])
-    elif file_ext in ['.jpg', '.jpeg', '.png']:
+    elif file_ext in ['jpg', 'jpeg', 'png']:
         img = Image.open(filepath).convert('L')  # Convert to grayscale
         return pytesseract.image_to_string(img)
-    elif file_ext in [".xlsx", ".csv"]:
-        df = pd.read_excel(filepath) if file_ext == '.xlsx' else pd.read_csv(filepath)
+    elif file_ext in ['xlsx', 'csv']:
+        df = pd.read_excel(filepath) if file_ext == 'xlsx' else pd.read_csv(filepath)
         return df.to_string(index=False)
-    elif file_ext == ".pptx":
+    elif file_ext == "pptx":
         prs = Presentation(filepath)
         text = []
         for slide in prs.slides:
@@ -68,7 +68,7 @@ def extract_text(filepath, file_ext):
                 if hasattr(shape, "text"):
                     text.append(shape.text)
         return '\n'.join(text)
-    elif file_ext == ".html":
+    elif file_ext == "html":
         with open(filepath, 'r', encoding='utf-8') as f:
             soup = BeautifulSoup(f, 'html.parser')
             return soup.get_text(separator='\n')
@@ -109,7 +109,6 @@ def classify_and_update(file_id, text):
 
 def lambda_handler(event, context):
     try:
-        print(f"[INFO] Received event: {json.dumps(event)}")
         bucket = event['Records'][0]['s3']['bucket']['name']
         key    = event['Records'][0]['s3']['object']['key']
 

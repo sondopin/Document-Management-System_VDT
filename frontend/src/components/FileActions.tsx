@@ -1,9 +1,8 @@
 import React, { useRef, useState } from "react";
-import { getUploadUrlAPI, uploadFileToS3, confirmUploadAPI } from "../apis/file.api";
+import { getUploadUrlAPI, uploadFileToS3WithProgress, confirmUploadAPI } from "../apis/file.api";
 import { completeFolderUploadAPI, prepareFolderUploadAPI, createFolderAPI } from "../apis/folder.api";
 import { useFolder } from "../context/folder.context";
-import UploadNotification from './UploadNotification';
-import axios, { AxiosProgressEvent } from 'axios';
+import { UploadingFile } from "../types/file.type";
 
 declare module 'react' {
     interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
@@ -17,16 +16,30 @@ export default function FileActions() {
     const [isModalOpen, setModalOpen] = useState(false);
     const [folderName, setFolderName] = useState("Thư mục không có tiêu đề");
 
-    const { parentFolder, refetchAll } = useFolder();
+    const { parentFolder, refetchAll, uploadingFiles, setUploadingFiles, setShowProgress } = useFolder();
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
         const files = Array.from(e.target.files);
 
+        if (files.length > 0) {
+            setShowProgress(true);
+        }
+
+        // Tạo danh sách file ban đầu cho UI
+        const newUploads: UploadingFile[] = files.map(file => ({
+            id: `${file.name}-${Date.now()}`, // Tạo ID tạm thời
+            name: file.name,
+            progress: 0,
+            status: 'uploading',
+            type: (file.name ?? '').split('.').pop()?.toLowerCase() ?? '',
+        }));
+        setUploadingFiles([...uploadingFiles, ...newUploads]);
+
         for (const file of files) {
             const start = Date.now();
+            const tempId = newUploads.find(f => f.name === file.name)!.id;
             try {
-                // ---- BƯỚC 1: Gọi BE để lấy Presigned URL ----
                 console.log(`[1/3] Getting upload URL for ${file.name}...`);
                 const res = await getUploadUrlAPI(
                     file.name,
@@ -34,41 +47,60 @@ export default function FileActions() {
                     parentFolder || null
                 );
 
-                const { uploadUrl, file_id } = res.data; // Giả sử axios trả về data trong res.data
+                const { uploadUrl, file_id } = res.data;
 
                 if (!uploadUrl) {
                     throw new Error("Could not get an upload URL.");
                 }
+                console.log(`Received upload URL: ${uploadUrl}`);
 
-                // ---- BƯỚC 2: Dùng URL vừa nhận để upload file thẳng lên S3 ----
                 console.log(`[2/3] Uploading ${file.name} to S3...`);
-                const uploadResponse = await uploadFileToS3(uploadUrl, file);
 
-                if (!uploadResponse.ok) {
-                    // Nếu upload S3 lỗi, ném ra lỗi để đi vào block catch
-                    throw new Error(`S3 upload failed: ${uploadResponse.statusText}`);
-                }
+                const handleProgress = (progress: { loaded: number, total: number }) => {
+                    const percentage = progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 0;
+                    setUploadingFiles(prev =>
+                        prev.map(f => (f.id === tempId ? { ...f, progress: percentage } : f))
+                    );
+                };
 
-                // ---- BƯỚC 3 (Khuyến khích): Thông báo cho BE là đã upload xong ----
+                await uploadFileToS3WithProgress(uploadUrl, file, handleProgress);
+
+                // Chuyển sang trạng thái "Đang xác nhận"
+                setUploadingFiles(prev => prev.map(f => f.id === tempId ? { ...f, progress: 100, status: 'confirming' } : f));
+
                 console.log(`[3/3] Confirming upload for fileId: ${file_id}...`);
                 await confirmUploadAPI(file_id, file.size);
 
-                const end = Date.now();
-                console.log(`✅ Successfully uploaded ${file.name} in ${end - start}ms`);
+                // Chuyển sang trạng thái "Thành công"
+                setUploadingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'success' } : f));
 
-            } catch (error) {
-                console.error(`❌ Failed to upload ${file.name}.`, error);
-                // Có thể thêm logic thông báo lỗi cho người dùng ở đây
+                refetchAll();
+
+                const end = Date.now();
+                console.log(`Successfully uploaded ${file.name} in ${end - start}ms`);
+
+            } catch (error: any) {
+                console.error(`Failed to upload ${file.name}.`, error);
+                setUploadingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'error', errorMessage: error.message } : f));
             }
         }
 
-        // Sau khi tất cả các file đã hoàn tất (thành công hoặc thất bại), refresh lại danh sách
-        refetchAll();
     };
 
     const handleFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return;
         const files = Array.from(e.target.files);
+
+        const folderName = files[0]?.webkitRelativePath.split('/')[0] || 'Uploaded Folder';
+        const totalFolderSize = files.reduce((acc, file) => acc + file.size, 0);
+        const folderUploadId = `folder-${folderName}-${Date.now()}`;
+
+        setShowProgress(true);
+        setUploadingFiles(prev => [
+            ...prev,
+            { id: folderUploadId, name: folderName, progress: 0, status: 'uploading', type: 'folder' },
+        ]);
+
 
         // --- Phần xây dựng cấu trúc folder giữ nguyên ---
         const folder_structure: any[] = [];
@@ -106,7 +138,7 @@ export default function FileActions() {
         });
 
         try {
-            // ---- BƯỚC 1: Gửi cấu trúc thư mục, lấy về danh sách file cần upload ----
+            // BƯỚC 1: Gửi cấu trúc thư mục, lấy về danh sách file cần upload 
             console.log('[1/4] Preparing folder upload...');
             const prepareResponse = await prepareFolderUploadAPI(
                 folder_structure,
@@ -115,7 +147,11 @@ export default function FileActions() {
             const { filesToUpload } = prepareResponse.data;
             console.log(`[2/4] Received ${filesToUpload.length} file URLs. Starting parallel upload...`);
 
-            // ---- BƯỚC 2: Tạo các promise để upload file song song ----
+            // Thiết lập theo dõi tiến trình tổng
+            const progressMap = new Map<string, number>();
+            let totalUploadedBytes = 0;
+
+            // BƯỚC 2: Tạo các promise để upload file song song 
             const uploadPromises = filesToUpload.map((fileToUpload: any) => {
                 // Lấy file object gốc từ Map
                 const file = fileMap.get(fileToUpload.relativePath);
@@ -124,13 +160,21 @@ export default function FileActions() {
                     // Trả về một promise đã bị từ chối
                     return Promise.reject(`File not found: ${fileToUpload.relativePath}`);
                 }
+
+                const handleFileProgress = (progress: { loaded: number }) => {
+                    const oldLoaded = progressMap.get(fileToUpload.fileId) || 0;
+                    totalUploadedBytes += progress.loaded - oldLoaded;
+                    progressMap.set(fileToUpload.fileId, progress.loaded);
+
+                    const overallProgress = totalFolderSize > 0 ? (totalUploadedBytes / totalFolderSize) * 100 : 0;
+                    setUploadingFiles(prev =>
+                        prev.map(f => (f.id === folderUploadId ? { ...f, progress: overallProgress } : f))
+                    );
+                };
+
                 // Gọi hàm upload lên S3 và trả về promise, kèm theo kết quả cần thiết
-                return uploadFileToS3(fileToUpload.uploadUrl, file)
-                    .then(response => {
-                        if (!response.ok) throw new Error(`S3 upload failed for ${file.name}`);
-                        // Trả về dữ liệu cần cho bước xác nhận
-                        return { fileId: fileToUpload.fileId, fileSize: file.size };
-                    });
+                return uploadFileToS3WithProgress(fileToUpload.uploadUrl, file, handleFileProgress)
+                    .then(() => ({ fileId: fileToUpload.fileId, fileSize: file.size }));
             });
 
             // ---- BƯỚC 3: Thực thi tất cả các promise upload ----
@@ -138,16 +182,18 @@ export default function FileActions() {
             const completedFiles = await Promise.all(uploadPromises);
             console.log(`[3/4] All ${completedFiles.length} files uploaded to S3 successfully.`);
 
+            setUploadingFiles(prev => prev.map(f => f.id === folderUploadId ? { ...f, status: 'success' } : f));
+
             // ---- BƯỚC 4: Gửi xác nhận cuối cùng đến BE ----
             if (completedFiles.length > 0) {
                 console.log('[4/4] Confirming upload with backend...');
                 await completeFolderUploadAPI(completedFiles);
             }
 
-            console.log('✅ Folder upload process completed successfully!');
+            console.log('Folder upload process completed successfully!');
 
         } catch (error) {
-            console.error('❌ An error occurred during the folder upload process:', error);
+            console.error('An error occurred during the folder upload process:', error);
             // Thêm logic hiển thị lỗi cho người dùng
         } finally {
             // Dù thành công hay thất bại, cuối cùng cũng refresh lại dữ liệu
