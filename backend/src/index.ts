@@ -14,7 +14,26 @@ if(mongoose.connection) {
 }
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://vdt-dms-frontend.vercel.app", // Thay bằng link frontend của m, thường là thay sau khi host, cứ để tạm r host được frontend r thay sau
+];
+
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+  })
+);
+
+
 app.use(cookie());
 
 app.use(express.json());

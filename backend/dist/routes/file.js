@@ -1,0 +1,21 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const files_1 = __importDefault(require("../controllers/files"));
+const auth_1 = require("../middleware/auth");
+const router = express_1.default.Router();
+router.post('/generate-upload-url', auth_1.verifyToken, files_1.default.generateUploadUrl);
+router.post('/confirm-upload', auth_1.verifyToken, files_1.default.confirmUpload);
+router.post('/getfiles', auth_1.verifyToken, files_1.default.getFiles);
+router.post('/update/:file_id', auth_1.verifyToken, files_1.default.updateFile);
+router.post('/delete', auth_1.verifyToken, files_1.default.deleteFile);
+router.get('/download/:fileId', auth_1.verifyToken, files_1.default.downloadFile);
+router.post("/recover", auth_1.verifyToken, files_1.default.recoveryFile);
+router.post('/delete-permanently', auth_1.verifyToken, files_1.default.deleteFilePermanently);
+router.post('/share-link', auth_1.verifyToken, files_1.default.getPresignedUrl);
+router.post('/share-user', auth_1.verifyToken, files_1.default.shareFile);
+router.post('/unshare', auth_1.verifyToken, files_1.default.unShareFile);
+exports.default = router;
