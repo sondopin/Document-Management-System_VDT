@@ -12,8 +12,9 @@ class Http {
   constructor() {
     this.access_token = getJWTFromLocalStorage();
     this.instance = axios.create({
-      baseURL: "https://vdt-dms-backend.onrender.com", // Thay bằng link backend của m, thường là thay sau khi host, cứ để tạm r host được backend r thay sau
-      timeout: 10000,
+      baseURL: "http://localhost:7000",
+      // baseURL: "https://vdt-dms-backend.onrender.com", 
+      timeout: 10000000,
       headers: {
         "Content-Type": "application/json",
       },

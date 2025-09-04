@@ -9,6 +9,15 @@ router.post('/generate-upload-url', verifyToken, fileController.generateUploadUr
 
 router.post('/confirm-upload', verifyToken, fileController.confirmUpload);
 
+// Multipart upload
+
+
+router.post('/initiate-multipart', verifyToken, fileController.initiateMultipartUpload);
+router.post('/get-part-presigned-url', verifyToken, fileController.getUploadPartPresignedUrl);
+router.post('/complete-multipart', verifyToken, fileController.completeMultipartUpload);
+router.post('/abort-multipart', verifyToken, fileController.abortMultipartUpload);
+
+
 router.post('/getfiles', verifyToken, fileController.getFiles);
 
 router.post('/update/:file_id', verifyToken, fileController.updateFile);

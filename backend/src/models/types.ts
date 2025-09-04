@@ -21,6 +21,8 @@ export type FileType = {
     parent_folder?: string; // Reference to FolderType
     is_deleted?: boolean; // Flag to indicate if the file is deleted
     deleted_at?: Date; // Timestamp when the file was deleted
+    content?: string; // Optional field for file content, default is empty string
+    vector_embedding?: number[]; // Optional field for vector embeddings, default is empty array
 }
 
 export type FolderType = {

@@ -6,17 +6,19 @@ from PIL import Image
 import pytesseract
 import tempfile
 import traceback
-import io
-import numpy as np
-import torch
-from tensorflow import keras
-from transformers import AutoTokenizer, AutoModel
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from bson import ObjectId
 import pandas as pd
 from pptx import Presentation
 from bs4 import BeautifulSoup
+import requests
+import base64
+import json
+import time
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
 
 print("Starting Lambda function...")
 
@@ -25,7 +27,17 @@ s3 = boto3.client('s3')
 pytesseract.pytesseract.tesseract_cmd = "/var/task/tesseract/bin/tesseract"
 os.environ["TESSDATA_PREFIX"] = "/var/task/tesseract/tesseract/share/tessdata"
 os.environ["LD_LIBRARY_PATH"] = "/var/task/tesseract/lib"
-os.environ["TRANSFORMERS_CACHE"] = "/tmp/huggingface"
+api_embedding =  "https://jpwd4r42ri.execute-api.ap-southeast-2.amazonaws.com/BERT_Stage/get-embedding"
+api_predict = "https://jpwd4r42ri.execute-api.ap-southeast-2.amazonaws.com/BERT_Stage/predict"
+
+esUsername = "elastic"
+esPassword = "nGa5A2umZ6Tnh1Kmeh0SeK8Y"  
+esIndex = "files"  # tên index trong Elasticsearch
+esEndpoint = "https://a45489d5009a463da1487c645bf718be.us-central1.gcp.cloud.es.io" 
+
+# Tạo header auth
+credentials = f"{esUsername}:{esPassword}"
+authHeader = "Basic " + base64.b64encode(credentials.encode()).decode()
 
 
 # --- Load .env ---
@@ -76,38 +88,162 @@ def extract_text(filepath, file_ext):
         print(f"[WARNING] Unsupported file type: {file_ext}")
         return "Unsupported file type"
 
+def chunk_text_by_chars(text: str, max_chars, overlap):
+    """
+    Chia text theo ký tự, giữ overlap.
+    Trả về list các chunk.
+    """
+    if not text:
+        return []
+    text = text.strip()
+    if len(text) <= max_chars:
+        return [{
+            "text": text,
+            "offset_start": 0,
+            "offset_end": len(text)
+        }]
+    chunks = []
+    start = 0
+    text_len = len(text)
+    while start < text_len:
+        end = start + max_chars
+        if end >= text_len:
+            chunk = text[start:text_len]
+            chunks.append({
+                "text": chunk,
+                "offset_start": start,
+                "offset_end": end
+            })
+            break
+        # cố gắng cắt ở khoảng trắng gần cuối để không cắt giữa từ
+        split_at = text.rfind(" ", start, end)
+        if split_at <= start:
+            split_at = end  # không tìm thấy space hợp lý -> cắt thẳng
+        chunk = text[start:split_at]
+        chunks.append({
+                "text": chunk,
+                "offset_start": start,
+                "offset_end": end
+            })
+        start = split_at - overlap if (split_at - overlap) > start else split_at
+    return chunks
 
-# --- Load tokenizer + model ---
-tokenizer = AutoTokenizer.from_pretrained("/var/task/models--bert-base-uncased", local_files_only=True)
-bert_model = AutoModel.from_pretrained("/var/task/models--bert-base-uncased", local_files_only=True)
-model = keras.models.load_model("/var/task/bert_text_classifier.keras", compile=False)
 
-# --- Hàm xử lý text ---
-def get_embedding(text):
-    inputs = tokenizer.encode_plus(text, return_tensors='pt', max_length=128, truncation=True, padding='max_length')
-    with torch.no_grad():
-        output = bert_model(**inputs)['last_hidden_state']
-    return output.squeeze().numpy().reshape(1, 128, 768)  # reshape để match input model
+def get_embedding_from_api(text: str, retries=3, delay=2):
+    payload = {"text": text}
+    for attempt in range(retries):
+        try:
+            resp = requests.post(api_embedding, json=payload, timeout=30)
+            resp.raise_for_status()
+            body = resp.json()
+            if "embedding" in body:
+                return body["embedding"][0][0]
+            print(f"[WARN] Unexpected response: {list(body.keys())}")
+            return None
+        except Exception as e:
+            print(f"[ERROR] Attempt {attempt+1} failed: {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+    return None
+
+def index_doc_to_es(doc: dict, es_index: str = esIndex):
+    """
+    Index 1 document vào Elasticsearch cloud.
+    Trả về True nếu thành công.
+    """
+    try:
+        url = f"{esEndpoint.rstrip('/')}/{es_index}/_doc"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": authHeader
+        }
+        resp = requests.post(url, headers=headers, data=json.dumps(doc))
+        if resp.status_code in (200, 201):
+            return True
+        else:
+            print(f"[ERROR] ES index failed status {resp.status_code}: {resp.text}")
+            return False
+    except Exception as e:
+        print(f"[ERROR] Exception during ES indexing: {e}")
+        return False
+
+def chunk_and_index(file_id, text, max_chars=1000, overlap=200):
+    """
+    Chia text thành chunk, gọi embedding API cho mỗi chunk, index vào ES.
+    file_id: ObjectId hoặc string
+    """
+    fid_str = str(file_id)
+    start_chunk = time.time()
+    chunks = chunk_text_by_chars(text, max_chars=max_chars, overlap=overlap)
+    print(f"[INFO] chunk_and_index -> file_id={fid_str}, produced {len(chunks)} chunks (max_chars={max_chars}, overlap={overlap})")
+    
+    def process_chunk(chunk):
+        # Call embedding API
+        emb = get_embedding_from_api(chunk["text"])
+        if emb is None:
+            print(f"[WARN] Skipping chunk due to failed embedding.")
+            return
+
+        # Build document
+        doc = {
+            "file_id": fid_str,
+            "content": chunk["text"],
+            "vector_embedding": emb,
+            "offset_start": chunk["offset_start"],
+            "offset_end": chunk["offset_end"]
+        }
+
+        return index_doc_to_es(doc, esIndex)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(process_chunk, chunks))
+    end_chunk = time.time() 
+    print(f"[INFO] chunk_and_index -> file_id={fid_str}, total time: {end_chunk - start_chunk:.2f} seconds")
+    print(f"[INFO] Indexed {sum(results)}/{len(chunks)} chunks for {fid_str}")
+
+
+def classify(text, retries=3, delay=2):
+    payload = {
+        "text": text
+    }
+    for attempt in range(retries):
+        try:
+            # Gọi POST request
+            response = requests.post(api_predict, json=payload)
+            response.raise_for_status()
+            # Parse kết quả từ model API
+            result = response.json()
+            predicted_class = result.get("predicted_class")
+            return predicted_class
+        except Exception as e:
+            print(f"[ERROR] Attempt {attempt+1} failed: {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+    return None
 
 # --- Predict & update MongoDB ---
-def classify_and_update(file_id, text):
-    embedding = get_embedding(text)
-    prediction = model.predict(embedding)
-    label_map = {0: 'sport', 1: 'tech', 2: 'entertainment', 3: 'politics', 4: 'business'}
-    predicted_class = label_map[np.argmax(prediction)]
+def classify_and_update(file_id, text, retries=3, delay=2):
+    predicted_class = classify(text, retries=retries, delay=delay)
 
     file_info = collection.find_one({"_id": file_id})
+
     print(f"File ID: {file_id}, Current Category: {file_info.get('document_category', 'N/A')}")
 
     # --- Cập nhật document_category ---
     result = collection.update_one(
-        {"_id": file_id},  # bạn có thể thay bằng `{"key": "some_key"}` nếu dùng `key` làm định danh
-        {"$set": {"document_category": predicted_class,
-                  "vector_embedding": embedding.flatten().tolist(),
-                  "content": text}}
+        {"_id": file_id},  
+        {"$set": {"document_category": predicted_class}}
     )
     print(f"Updated file {file_id} to category: {predicted_class} - Modified: {result.modified_count}")
 
+
+# ---------- ASYNC HANDLER ----------
+async def process_file(file_id, text):
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        classify_future = loop.run_in_executor(pool, classify_and_update, ObjectId(file_id), text)
+        index_future = loop.run_in_executor(pool, chunk_and_index, file_id, text)
+        await asyncio.gather(classify_future, index_future)
 
 def lambda_handler(event, context):
     try:
@@ -132,7 +268,7 @@ def lambda_handler(event, context):
         print(f"[INFO] Extracted text (truncated):\n{text[:1000]}")
 
         if file_id and text != "Unsupported file type" and text != "":
-            classify_and_update(ObjectId(file_id), text)
+            asyncio.run(process_file(file_id, text))
         else:
             print(f"[WARNING] No valid file_id or text extracted for file: {file_name}")
 
@@ -153,3 +289,4 @@ def lambda_handler(event, context):
         # Clean up temp file
         if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
             os.remove(tmp_file_path)
+

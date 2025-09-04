@@ -4,6 +4,8 @@ import { completeFolderUploadAPI, prepareFolderUploadAPI, createFolderAPI } from
 import { useFolder } from "../context/folder.context";
 import { UploadingFile } from "../types/file.type";
 
+import { UploadService } from '../apis/file.api';
+
 declare module 'react' {
     interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
         webkitdirectory?: string;
@@ -87,6 +89,85 @@ export default function FileActions() {
 
     };
 
+
+    const handleFileUploadParallel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files) return;
+        const files = Array.from(e.target.files);
+
+        if (files.length > 0) {
+            setShowProgress(true);
+        }
+
+        // Create UploadingFile objects for all files at once
+        const newUploadingFiles = await Promise.all(files.map(async file => {
+            const uploadService = new UploadService();
+            const fileId = await uploadService.initialize(file, parentFolder);
+
+            return {
+                id: fileId,
+                name: file.name,
+                progress: 0,
+                status: 'uploading',
+                type: file.name.split('.').pop()?.toLowerCase() ?? '',
+                uploadService
+            } as UploadingFile;
+        }));
+
+        // Add all files to uploadingFiles state at once
+        setUploadingFiles(prev => [...prev, ...newUploadingFiles]);
+
+        // Create upload promises for all files
+        const uploadPromises = newUploadingFiles.map(async (uploadingFile) => {
+            try {
+                console.log(`[1/2] Starting upload for ${uploadingFile.name}`);
+                const start = Date.now();
+                if (!uploadingFile.uploadService) {
+                    throw new Error('Upload service is not initialized');
+                }
+
+                await uploadingFile.uploadService.uploadFile(
+                    files.find(f => f.name === uploadingFile.name)!, // Get original File object
+                    (progress: number) => {
+                        // Update progress for this specific file
+                        setUploadingFiles(prev =>
+                            prev.map(f => f.id === uploadingFile.id ?
+                                { ...f, progress } : f
+                            )
+                        );
+                    },
+                    () => {
+                        // Mark this specific file as complete
+                        setUploadingFiles(prev =>
+                            prev.map(f => f.id === uploadingFile.id ?
+                                { ...f, status: 'success' } : f
+                            )
+                        );
+                    }
+                );
+                console.log(`[2/2] Upload to S3 completed for ${uploadingFile.name}`);
+
+                const end = Date.now();
+                console.log(`Successfully uploaded ${uploadingFile.name} in ${end - start}ms`);
+
+            } catch (error) {
+                console.error(`Failed to upload ${uploadingFile.name}:`, error);
+                const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+
+                setUploadingFiles(prev =>
+                    prev.map(f => f.id === uploadingFile.id ?
+                        { ...f, status: 'error', errorMessage } : f
+                    )
+                );
+            }
+        });
+
+        // Wait for all uploads to complete
+        await Promise.all(uploadPromises)
+            .finally(() => {
+                refetchAll();
+            });
+    };
+
     const handleFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return;
         const files = Array.from(e.target.files);
@@ -96,9 +177,10 @@ export default function FileActions() {
         const folderUploadId = `folder-${folderName}-${Date.now()}`;
 
         setShowProgress(true);
+        const uploadService = new UploadService();
         setUploadingFiles(prev => [
             ...prev,
-            { id: folderUploadId, name: folderName, progress: 0, status: 'uploading', type: 'folder' },
+            { id: folderUploadId, name: folderName, progress: 0, status: 'uploading', type: 'folder', uploadService },
         ]);
 
 
@@ -215,7 +297,7 @@ export default function FileActions() {
                 ref={fileInputRef}
                 multiple
                 hidden
-                onChange={handleFileUpload}
+                onChange={handleFileUploadParallel}
             />
             <input
                 type="file"

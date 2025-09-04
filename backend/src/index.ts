@@ -16,7 +16,7 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://vdt-dms-frontend.vercel.app", // Thay bằng link frontend của m, thường là thay sau khi host, cứ để tạm r host được frontend r thay sau
+  "https://vdt-dms-frontend.vercel.app",
 ];
 
 
@@ -39,8 +39,8 @@ app.use(cookie());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(bodyParser.json({ limit: "50mb" })); // Tăng giới hạn JSON
-app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
+app.use(bodyParser.json({ limit: "100mb" })); // Tăng giới hạn JSON
+app.use(bodyParser.urlencoded({ limit: "100mb", extended: true }));
 
 // Static middleware để phục vụ các file trong thư mục `public`
 app.use("/public", express.static(path.join(__dirname, "public")));

@@ -4,9 +4,9 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 require('dotenv').config();
 import { File } from "../models/file"; // Import your File model
 import { console } from "inspector";
-import { Readable } from 'stream';
 import path from "path";
 import { sanitizeFileNamePart } from "../utils/utils";
+import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand, UploadPartCommand } from "@aws-sdk/client-s3";
 
 
 const s3 = new S3Client({
@@ -91,6 +91,206 @@ const fileController = {
             res.status(500).json({ message: "Failed to confirm upload", error: err.message });
         }
     },
+
+    initiateMultipartUpload: async (req: Request, res: Response) => {
+        try {
+            const { fileName, fileType, parent_folder = null } = req.body;
+            const user_id = req.user_id;
+
+            if (!fileName || !fileType) {
+                res.status(400).json({ message: "fileName and fileType are required" });
+                return;
+            }
+
+            // Tạo key cho file trên S3
+            const now = new Date();
+            const formattedTime = now
+                .toISOString()
+                .replace(/:/g, "-")
+                .replace(/\..+/, "")
+                .replace("T", "_");
+
+            const sanitizedFileName = sanitizeFileNamePart(fileName);
+            const key = `${user_id}/${formattedTime}_${sanitizedFileName}`;
+
+            // Lưu metadata file vào MongoDB
+            const document_type = (fileName ?? '').split('.').pop()?.toLowerCase() ?? '';
+            const uniqueName = await getUniqueName(fileName, parent_folder);
+
+            const newFile = new File({
+                name: uniqueName,
+                size: 0,
+                document_type,
+                last_modified: now,
+                key,
+                owner_id: user_id,
+                parent_folder
+            });
+
+            await newFile.save();
+
+            // Khởi tạo multipart upload trên S3
+            const command = new CreateMultipartUploadCommand({
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: key,
+                ContentType: fileType,
+                Metadata: {
+                    file_id: newFile._id.toString()
+                }
+            });
+
+            const { UploadId } = await s3.send(command);
+
+            res.status(200).json({
+                uploadId: UploadId,
+                fileId: newFile._id,
+                key
+            });
+
+        } catch (error: any) {
+            console.error("Initiate Multipart Upload Error:", error);
+            res.status(500).json({
+                message: "Failed to initiate multipart upload",
+                error: error.message
+            });
+        }
+    },
+
+    getUploadPartPresignedUrl: async (req: Request, res: Response) => {
+        try {
+            const { fileId, partNumber, uploadId } = req.body;
+
+
+            if (!fileId || partNumber === null || !uploadId) {
+                res.status(400).json({
+                    message: 'fileId, partNumber, and uploadId are required',
+                    fileId,
+                    partNumber,
+                    uploadId
+                });
+                return;
+            }
+
+            const file = await File.findById(fileId);
+            if (!file) {
+                res.status(404).json({ message: "File not found" });
+                return;
+            }
+
+            const command = new UploadPartCommand({
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: file.key,
+                UploadId: uploadId,
+                PartNumber: partNumber
+            });
+
+            const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+
+            res.status(200).json({
+                presignedUrl: signedUrl,
+                partNumber
+            });
+
+        } catch (error: any) {
+            console.error("Get Upload Part URL Error:", error);
+            res.status(500).json({
+                message: "Failed to generate upload part URL",
+                error: error.message
+            });
+        }
+    },
+
+    completeMultipartUpload: async (req: Request, res: Response) => {
+        try {
+            const { fileId, uploadId, parts, totalSize } = req.body;
+
+            if (!fileId || !uploadId || !parts || !Array.isArray(parts)) {
+                res.status(400).json({
+                    message: "fileId, uploadId, and parts array are required"
+                });
+                return;
+            }
+
+            const file = await File.findById(fileId);
+            if (!file) {
+                res.status(404).json({ message: "File not found" });
+                return;
+            }
+
+            // Complete multipart upload on S3
+            const command = new CompleteMultipartUploadCommand({
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: file.key,
+                UploadId: uploadId,
+                MultipartUpload: {
+                    Parts: parts
+                }
+            });
+
+            await s3.send(command);
+
+            // Update file metadata in MongoDB
+            file.size = totalSize;
+            await file.save();
+
+            res.status(200).json({
+                message: "Multipart upload completed successfully",
+                file
+            });
+
+        } catch (error: any) {
+            console.error("Complete Multipart Upload Error:", error);
+            res.status(500).json({
+                message: "Failed to complete multipart upload",
+                error: error.message
+            });
+        }
+    },
+
+    abortMultipartUpload: async (req: Request, res: Response) => {
+        try {
+            const { fileId, uploadId } = req.body;
+
+            if (!fileId || !uploadId) {
+                res.status(400).json({
+                    message: "fileId and uploadId are required"
+                });
+                return;
+            }
+
+            const file = await File.findById(fileId);
+            if (!file) {
+                res.status(404).json({ message: "File not found" });
+                return;
+            }
+
+            // Abort multipart upload on S3
+            const command = new AbortMultipartUploadCommand({
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: file.key,
+                UploadId: uploadId
+            });
+
+            await s3.send(command);
+
+            // Delete file metadata from MongoDB
+            await File.findByIdAndDelete(fileId);
+
+            res.status(200).json({
+                message: "Multipart upload aborted successfully"
+            });
+
+        } catch (error: any) {
+            console.error("Abort Multipart Upload Error:", error);
+            res.status(500).json({
+                message: "Failed to abort multipart upload",
+                error: error.message
+            });
+        }
+    },
+
+
+
 
     getFiles: async (req: Request, res: Response) => {
         try {

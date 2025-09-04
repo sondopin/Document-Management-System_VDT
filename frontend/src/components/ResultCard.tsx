@@ -252,7 +252,7 @@ export default function ResultCard({ fifo, onDoubleClick, handleOpenFolder }: Re
 
   return (
     <div>
-      <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-x-4 items-center ml-3 px-4 py-2 border-b hover:bg-gray-50 text-sm relative" onDoubleClick={() => onDoubleClick?.(fifo)}>
+      <div className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-x-4 items-center ml-3 px-4 py-2 border-b hover:bg-gray-50 text-sm relative ${menuOpen ? 'bg-blue-200' : ''}`} onDoubleClick={() => onDoubleClick?.(fifo)}>
 
         {/* Tên file/folder + icon */}
         <div className="flex items-center gap-2 truncate">
@@ -386,7 +386,7 @@ export default function ResultCard({ fifo, onDoubleClick, handleOpenFolder }: Re
                   <button className="flex items-center px-4 py-2 w-full hover:bg-gray-100" onClick={handleRecovery}>
                     <Undo2 className="w-4 h-4 mr-2" /> Khôi phục
                   </button>
-                  <button className="flex items-center px-4 py-2 w-full text-red-500 hover:bg-gray-100" onClick={handleDeletePermanently}>
+                  <button className="flex items-center px-4 py-2 w-full text-red-500 hover:bg-gray-100 border border-red-500" onClick={handleDeletePermanently}>
                     <Trash2 className="w-4 h-4 mr-2" /> Xóa vĩnh viễn
                   </button>
                 </div>
