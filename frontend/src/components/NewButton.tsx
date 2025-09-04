@@ -25,7 +25,7 @@ const NewButton = () => {
       >
         <Plus className="w-7 h-7" />
         Mới
-      </button>
+      </button> 
 
       {isOpen && (
         <div className="absolute z-10 w-56 bg-white border rounded shadow-lg">

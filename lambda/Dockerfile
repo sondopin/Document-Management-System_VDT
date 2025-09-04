@@ -12,7 +12,7 @@ COPY tesseract /opt/tesseract
 ENV PATH="/opt/tesseract/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/opt/tesseract/lib:${LD_LIBRARY_PATH}"
 ENV TESSDATA_PREFIX="/opt/tesseract/share/tessdata"
-ENV TRANSFORMERS_CACHE="/tmp/huggingface"
+# ENV TRANSFORMERS_CACHE="/tmp/huggingface"
 
 
 # Copy toàn bộ source code vào container (lambda_function.py, .env, model,...)

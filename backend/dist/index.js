@@ -21,8 +21,8 @@ app.use((0, cors_1.default)());
 app.use((0, cookie_parser_1.default)());
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
-app.use(body_parser_1.default.json({ limit: "50mb" })); // Tăng giới hạn JSON
-app.use(body_parser_1.default.urlencoded({ limit: "50mb", extended: true }));
+app.use(body_parser_1.default.json({ limit: "100mb" })); // Tăng giới hạn JSON
+app.use(body_parser_1.default.urlencoded({ limit: "100mb", extended: true }));
 // Static middleware để phục vụ các file trong thư mục `public`
 app.use("/public", express_1.default.static(path_1.default.join(__dirname, "public")));
 (0, index_1.default)(app);

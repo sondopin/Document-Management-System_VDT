@@ -32,11 +32,16 @@ const BreadCrumb = ({ path, onNavigate }: { path: { name: string, id: string | n
 );
 
 const MainContent = () => {
-    const { parentFolder, setParentFolder, breadcrumbs, setBreadcrumbs, option, setRefetchAll, searchQuery, setShowProgress, uploadingFiles, setUploadingFiles } = useFolder();
+    const { parentFolder, setParentFolder, breadcrumbs, setBreadcrumbs, option, setRefetchAll, searchQuery, showProgress, setShowProgress, uploadingFiles, setUploadingFiles } = useFolder();
     const [sort, setSort] = useState<SortType>({
         name: "asc",
         last_modified: "asc"
     });
+
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    const uploadingCount = uploadingFiles.filter(f => f.status === 'uploading').length;
+    const title = uploadingCount > 0 ? `Đang tải ${uploadingCount} mục lên` : 'Tải lên hoàn tất';
 
 
     useEffect(() => {
@@ -144,6 +149,42 @@ const MainContent = () => {
     };
 
 
+    const handlePause = (fileId: string) => {
+        setUploadingFiles(prev =>
+            prev.map(f => {
+                if (f.id === fileId && f.uploadService) {
+                    f.uploadService.pauseUpload();
+                    return { ...f, status: 'paused' };
+                }
+                return f;
+            })
+        );
+    };
+
+    const handleResume = (fileId: string) => {
+        setUploadingFiles(prev =>
+            prev.map(f => {
+                if (f.id === fileId && f.uploadService) {
+                    f.uploadService.resumeUpload();
+                    return { ...f, status: 'uploading' };
+                }
+                return f;
+            })
+        );
+    };
+
+    const handleCancel = (fileId: string) => {
+        setUploadingFiles(prev =>
+            prev.map(f => {
+                if (f.id === fileId && f.uploadService) {
+                    f.uploadService.cancelUpload();
+                    return { ...f, status: 'error', errorMessage: 'Upload cancelled' };
+                }
+                return f;
+            })
+        );
+    };
+
     const renderContent = () => {
         // Fetch files/folders based on `view` and `parentFolder` and `searchQuery`
         return (
@@ -183,8 +224,24 @@ const MainContent = () => {
                 {files.map(file => (
                     <ResultCard fifo={file} />
                 ))}
-                <UploadProgress files={uploadingFiles} onClose={handleCloseProgress} />
-
+                {showProgress &&
+                    <div className="upload-progress-container">
+                        <div className="upload-header" onClick={() => setIsExpanded(!isExpanded)}>
+                            <span>{title}</span>
+                            <div className="header-icons">
+                                <button className="icon-button">{isExpanded ? '▼' : '▲'}</button>
+                                <button className="icon-button" onClick={(e) => { e.stopPropagation(); handleCloseProgress(); }}>×</button>
+                            </div>
+                        </div>
+                        {isExpanded && (
+                            <div className="upload-progress-bar">
+                                {uploadingFiles.map((file) => (
+                                    <UploadProgress key={file.id} file={file} onPause={handlePause} onResume={handleResume} onCancel={handleCancel} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                }
             </div>
         );
     };

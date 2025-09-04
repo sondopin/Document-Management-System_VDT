@@ -1,3 +1,5 @@
+import { UploadService } from "../apis/file.api";
+
 export interface File {
     _id: string;
     name: string;
@@ -30,9 +32,10 @@ export interface UploadingFile {
     id: string;
     name: string;
     progress: number;
-    status: 'uploading' | 'confirming' | 'success' | 'error';
+    status: 'uploading' | 'paused' | 'success' | 'error' | 'confirming';
     type: string; // Phân biệt loại mục upload
     errorMessage?: string;
+    uploadService?: UploadService;
 }
 
 export type Files = File[];
