@@ -102,7 +102,9 @@ def classify_and_update(file_id, text):
     # --- Cập nhật document_category ---
     result = collection.update_one(
         {"_id": file_id},  # bạn có thể thay bằng `{"key": "some_key"}` nếu dùng `key` làm định danh
-        {"$set": {"document_category": predicted_class}}
+        {"$set": {"document_category": predicted_class,
+                  "vector_embedding": embedding.flatten().tolist(),
+                  "content": text}}
     )
     print(f"Updated file {file_id} to category: {predicted_class} - Modified: {result.modified_count}")
 
